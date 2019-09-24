@@ -1,0 +1,243 @@
+#!/bin/bash
+# auther jason.you
+# mail 
+LIST=()
+# Modify before use.
+HOME_PATH='~/.ssha'
+
+openssh() {
+    host="127.0.0.1"
+    port="22"
+    user="root"
+    pwd=""
+    while [ $# -gt 0 ]; do
+        case $1 in
+        "-h")
+            shift
+            host=$1
+            ;;
+        "-p")
+            shift
+            port=$1
+            ;;
+        "-u")
+            shift
+            user=$1
+            ;;
+        "-P")
+            shift
+            pwd=$1
+            ;;
+        "-i")
+            shift
+            identityfile=$1
+            ;;
+        "-?")
+            printf " -h host \n -p port \n -u username \n -P password \n -i identity file \n -h help"
+            ;;
+        "-h")
+            printf " -h host \n -p port \n -u username \n -P password \n -i identity file \n -h help"
+            ;;
+        "*")
+            printf "UnKnow Options"
+            return 1
+            ;;
+        esac
+        shift
+    done
+    if [ -n "$identityfile" ]; then
+        if [ ! -e "${identityfile}" ]; then
+            echo "Identity file [${identityfile}] not find!"
+            return 1
+        fi
+    fi
+    spawn="spawn ssh ${user}@${host} -p ${port}"
+    if [ -n "$identityfile" ]; then
+        spawn="${spawn} -i ${identityfile} "
+    fi
+    expectStr="
+    expect {
+        '*]#*' {interact}
+        '*(yes/no)?*' { send 'yes\r' } 
+        '*password:*' { send '${pwd}\r' }
+        }
+     interact "
+    expectStr=${expectStr//"'"/'"'}
+    expectStr="
+    set timeout 30
+    ${spawn}
+    ${expectStr}
+    "
+    expectPath="$(whereis expect)"
+    expectPath="${expectPath/':'/''}"
+    expect -c "${expectStr}"
+}
+
+function getName() {
+    while [ $# -gt 0 ]; do
+        case $1 in
+        "--name")
+            shift
+            echo "${1}"
+            ;;
+        esac
+        shift
+    done
+    return 1
+}
+
+function loginName() {
+    name=$1
+    findFile $HOME_PATH
+    for file in ${LIST[@]}; do
+        itemStr=$(cat $file)
+        itemName=$(getName ${itemStr})
+        if [ "${itemName}" = "${name}" ]; then
+            openssh ${itemStr}
+            return
+        fi
+
+    done
+    echo "Exists ${name}"
+}
+
+function loginIndex() {
+    index = $1
+    echo $index
+    item=${LIST[$(($index - 1))]}
+    openssh $(cat $item)
+}
+
+function findFile() {
+    for file in $(ls ${1}); do
+        if [ -d "${1}/${file}" ]; then
+            findFile "${file}/*"
+        else
+            if [ -f "${1}/${file}" ]; then
+                LIST=(${LIST[@]} "${1}/${file}")
+            fi
+        fi
+    done
+    return 0
+}
+
+function list() {
+    findFile $HOME_PATH
+    printf " %-5s%28s%38s%14s%10s\n" "    #" "NAME" "HOST" "PORT" "TYPE"
+    i=1
+    for file in ${LIST[@]}; do
+        printfList $i $(cat $file)
+        i=$(($i + 1))
+    done
+    read -p "Enter index: " index
+    if [[ "${index}" =~ ^[0-9]$ ]]; then
+
+        echo $index
+        loginIndex $index
+    fi
+}
+function printfList() {
+    host="127.0.0.1"
+    port="22"
+    user="root"
+    index=$1
+    name=$index
+    shift
+    while [ $# -gt 0 ]; do
+        case $1 in
+        "-h")
+            shift
+            host=$1
+            ;;
+        "-p")
+            shift
+            port=$1
+            ;;
+        "-u")
+            shift
+            user=$1
+            ;;
+        "--name")
+            shift
+            name=$1
+            ;;
+        esac
+        shift
+    done
+    printf " %-5s%28s%38s%14s%10s\n" "[${index}]:" "${name}" "${user}@${host}" "${port}" "ssh"
+}
+
+function add() {
+    host="127.0.0.1"
+    port="22"
+    user="root"
+    pwd=""
+    name=""
+    while [ $# -gt 0 ]; do
+        case $1 in
+        "-h")
+            shift
+            host=$1
+            ;;
+        "-p")
+            shift
+            port=$1
+            ;;
+        "-u")
+            shift
+            user=$1
+            ;;
+        "-P")
+            shift
+            pwd=$1
+            ;;
+        "-i")
+            shift
+            identityfile=$1
+            ;;
+        "-n")
+            shift
+            name=$1
+            ;;
+        esac
+        shift
+    done
+    echo "--name ${name} -h ${host} -u ${user} -P ${pwd} -p ${port} -i ${identityfile} " >"${HOME_PATH}/${name}.conf"
+}
+
+function useHelp() {
+    printf "  
+    list    list all ssh login info.
+    add     add a ssh login info.
+    [arg]   login ssh."
+}
+
+function menu() {
+    case $1 in
+    "list")
+        list
+        ;;
+    "add")
+        shift
+        add $@
+        ;;
+    "-h")
+        useHelp
+        ;;
+    *)
+        loginName $@
+        ;;
+    esac
+    if [ -z "$1" ]; then
+        list
+    fi
+}
+
+function init() {
+    if [ ! -d "${HOME_PATH}" ]; then
+        mkdir -p "${HOME_PATH}"
+    fi
+}
+
+init
+menu $*
