@@ -130,7 +130,7 @@ function list() {
         i=$(($i + 1))
     done
     read -p "Enter index: " index
-    if [[ "${index}" =~ ^[0-9]$ ]]; then
+    if [[ "${index}" =~ ^[0-9]{1,2}$ ]]; then
 
         echo $index
         loginIndex $index
